@@ -1,7 +1,7 @@
 # java-agent-demo
 Tell you how to write a common java agent  and learn some core  implements.
 
-### 一个完整的Java Agent探针实现过程
+### Premain 模式Java Agent探针实现过程
 
 #### 目标
 
@@ -155,4 +155,129 @@ java -javaagent:/path/agentdemo/target/javaagent-demo-0.0.1-SNAPSHOT-jar-with-de
 #### 运行效果
 
 ![image.png](./assets/image-15.png)
+
+
+### 基于Attach模式 Java Agent 探针实现过程
+
+### 目标
+
+实现一个简单性能工具，通过Java Agent 探针统计Java应用程序下所有方法的执行时间
+
+1、还是之前 Maven 项目工程，在 `MANIFEST.MF` 文件中定义`Agentmain-Class`属性，指定一个实现类。类中实现了`Agentmain`方法，这就是Java Agent 在JVM运行时加载的启动入口
+
+```xml
+Agent-Class: com.laziobird.MyAgentDemo
+```
+2、构建Agentmain方法
+```java
+public class MyAgentDemo {
+  // JVM运行时，Agent修改字节码
+  public static void agentmain(String args, Instrumentation inst) {
+      System.out.println(" agentmain agent loaded !");
+      Class[] allClass = inst.getAllLoadedClasses();
+      for (Class c : allClass) {
+          inst.addTransformer(new AgentMainTransformerDemo(), true);
+          try {
+          //agentmain 是JVM运行时，需要调用 retransformClasses 重定义类 ！！
+          inst.retransformClasses(c);
+               } catch (UnmodifiableClassException e) {
+                 throw new RuntimeException(e); }
+          }    }
+ ....   
+}
+```
+我们在类 `MyAgentDemo`实现`agentmain`方法，里面添加一个类转化器  `AgentMainTransformerDemo`，这个转化器插入实现统计方法调用时间的字节码片段
+```java
+public class AgentMainTransformerDemo implements ClassFileTransformer {
+    @Override
+    public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
+                            ProtectionDomain protectionDomain, byte[] classfileBuffer) throws IllegalClassFormatException {
+        className = className.replace("/", ".");
+        //这次我们用另外一种简洁API方法修改字节码
+        if (className.contains("com.laziobird")) {
+            try {
+                // 得到类信息
+                CtClass ctclass = ClassPool.getDefault().get(className);
+                for (CtMethod ctMethod : ctclass.getDeclaredMethods()) {
+                    // 方法内部声明局部变量
+                    ctMethod.addLocalVariable("start", CtClass.longType);
+                    // 方法前插入Java代码片段
+                    ctMethod.insertBefore("start = System.currentTimeMillis();");
+                    String methodName = ctMethod.getLongName();
+                    ctMethod.insertAfter("System.out.println(\"" + methodName + " cost: \" + (System" +
+                            ".currentTimeMillis() - start));");
+                    // 方法结束尾部插入Java代码片段
+                    return ctclass.toBytecode();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        return null;
+    }
+}
+```
+3、重新打包生成新的Jar包
+运行 `maven assembly`，进行编译打包
+
+4、写测试的Java程序
+
+类AgentAttachTest 定义一个方法，为了方便查看Attach 效果，我们让JVM 主进程一直循环执行这个方法。同时为了区分，通过随机数改变方法的运行时间。这样看到探针每次统计结果也不同。类的包名是`com.laziobird`，Agent 只会对`com.laziobird` 的类起作用
+
+```java
+public void test(int x) {
+    try {
+        long sleepTime = x*1000;
+        Thread.sleep(sleepTime);
+        System.out.println("the method: AgentAttachTest.test | sleep time = " + sleepTime+ "ms");
+    } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+    }
+}
+public static void main(String[] args) {
+    AgentAttachTest agentTest = new AgentAttachTest();
+    while (1==1){
+        int x = new Random().nextInt(10);
+        agentTest.test(x);
+    }
+}
+```
+5、编写一个演示 Attach 通信的JVM 程序，用于启动 Agent
+```java
+public class AttachJVM {
+    public static void main(String[] args) throws IOException, AttachNotSupportedException, AgentLoadException, AgentInitializationException {
+        // 获取运行中的JVM列表
+        List<VirtualMachineDescriptor> vmList = VirtualMachine.list();
+        // 我们编写探针的Jar包路径
+        String agentJar = "/Users/jiangzhiwei/eclipse-workspace/agentdemo/target/javaagent-demo-0.0.1-SNAPSHOT-jar-with-dependencies.jar";
+        for (VirtualMachineDescriptor vmd : vmList) {
+            // 找到测试的JVM
+            System.out.println("vmd name: "+vmd.displayName());
+            if (vmd.displayName().endsWith("AgentAttachTest")) {
+                // attach到目标ID的JVM上
+                VirtualMachine virtualMachine = VirtualMachine.attach(vmd.id());
+                // agent指定jar包到已经attach的JVM上
+                virtualMachine.loadAgent(agentJar);
+                virtualMachine.detach();
+}}}}
+```
+### 运行效果
+
+1、运行测试的Java程序，为了方便，也可以不用打成Jar运行
+
+![image.png](./assets/image-18.png)
+
+2、我们启动Attach 的JVM程序。它主要动作：
+
+1、通过Attach API，找到要监听的JVM进程，我们称为VirtualMachine
+
+2、VirtualMachine 借助Attach API 的`LoadAgent`方法将Agent 加载进来
+
+![image.png](./assets/image-19.png)
+
+3、Agent 开始工作！我们回过头来看看探针在测试程序的运行效果
+
+![image.png](./assets/image-20.png)
+
+我们手写Java 探针在JVM 运行时也能动态改变字节码。
 
