@@ -8,7 +8,7 @@ Tell you how to write a common java agent  and learn some core  implements.
 >实现一个简单性能工具，通过探针统计Java程序所有方法的执行时间
 1、构建 Maven 项目工程，添加 MANIFEST.MF , 目录大致
 
-图-11
+![image.png](./assets/image-11.png)
 
 在 `MANIFEST.MF`文件中定义`Premain-Class`属性，指定一个实现类。类中实现了Premain方法，这就是Java Agent 在类加载启动入口
 
@@ -98,13 +98,13 @@ public class PreMainTransformerDemo implements ClassFileTransformer{
    }
 ```
 这段程序等价于：把指定Java类下所有方法进行了如下转换，重新生成字节码加载执行
-图-12
+![image.png](./assets/image-12.png)
 
 4、打包生成Java Agent的Jar 包
 
 在`pom.xml`配置好`maven assembly`，进行编译打包
 
-图-13
+![image.png](./assets/image-13.png)
 
 5、写一个Java测试程序，验证探针是否生效
 
@@ -144,7 +144,7 @@ public class ClassC {
 }
 ```
 我们给测试程序打成可执行的Jar包，Jar 指定默认运行的类是 `AgentTest`  
-图-14
+![image.png](./assets/image-14.png)
 
 运行测试程序，通过`-javaagent`启动我们写的 Java Agent 探针
 
@@ -154,5 +154,5 @@ java -javaagent:/path/agentdemo/target/javaagent-demo-0.0.1-SNAPSHOT-jar-with-de
 ```
 #### 运行效果
 
-图-15
+![image.png](./assets/image-15.png)
 
