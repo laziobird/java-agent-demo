@@ -1,0 +1,7 @@
+Manifest-Version: 1.0
+Premain-Class: com.laziobird.MyAgentDemo
+Agent-Class: com.laziobird.MyAgentDemo
+Can-Redefine-Classes: true
+Can-Retransform-Classes: true
+
+
